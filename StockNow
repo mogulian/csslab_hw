@@ -1,0 +1,87 @@
+import requests
+from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
+import time
+import datetime
+import pytz
+
+
+# 주식 정보 가져오기
+def get_bs_obj(com_code):
+    url = "https://finance.naver.com/item/main.nhn?code=" + com_code
+    result = requests.get(url)
+    bs_obj = BeautifulSoup(result.content, "html.parser")  # HTML 파싱
+    return bs_obj
+
+def get_price(com_code):
+    bs_obj = get_bs_obj(com_code)
+    no_today = bs_obj.find("p", {"class": "no_today"})
+    blind_now = no_today.find("span", {"class": "blind"})
+    return blind_now.text
+
+# 그래프 데이터 초기화
+listprices = [0] * 10
+listtime = ['un-collected'] * 10
+
+# 실시간 그래프
+plt.ion()  # Interactive mode on
+
+previous_price = None  # 초기값
+
+while True:
+    try:
+        print("삼성전자 현재가")
+        price = get_price("005930")
+        stock_price = int(price.replace(",", ""))  # 문자열 ',' 제거 후 정수형 변환
+
+        naive_now = datetime.datetime.now()
+
+        # 시스템 로컬 시간대 확인
+        local_timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+
+        # 로컬 시간대로 설정
+        local_aware_now = naive_now.replace(tzinfo=local_timezone)
+
+        # 원하는 시간대로 변환 (예: 아시아/서울)
+        seoul_timezone = pytz.timezone('Asia/Seoul')
+        current_time = local_aware_now.astimezone(seoul_timezone)
+
+        # 데이터 업데이트
+        listprices.append(stock_price)
+        listtime.append(current_time.strftime("%H:%M:%S"))  # 시간만 표시
+        del listprices[0]
+        del listtime[0]
+
+        print(listprices)
+        print(listtime)
+
+        # 그래프 업데이트
+        plt.clf()  # 그래프 클리어
+        plt.plot(listtime, listprices, marker='o')
+        plt.xlabel('Time (HH:MM:SS)')
+        plt.ylabel('Stock Price (KRW)')
+        plt.title('Real-time Stock Price of Samsung Electronics')
+        plt.xticks(rotation=45)
+        plt.tight_layout()  # 레이아웃 조정
+
+        # 증감률 계산 및 표시
+        if previous_price is not None:
+            change = stock_price - previous_price
+            percentage_change = (change / previous_price) * 100  # 증감률 계산
+            color = "red" if change > 0 else "blue"  # 상승 빨강, 하락 파랑
+            plt.annotate(
+                f"{percentage_change:.2f}%",  # 소수점 2자리 표시
+                xy=(listtime[-1], stock_price),
+                xytext=(0, 10),
+                textcoords='offset points',
+                ha='center',
+                color=color,
+                fontsize=12,
+                fontweight='bold'
+            )
+        previous_price = stock_price  # 이전 가격 업데이트
+
+        plt.pause(5)  # 5초마다 새로 그림
+    except Exception as e:
+        print(f"오류 발생: {e}")
+    time.sleep(60 - 5)  # 60초 대기 (pause 동안 5초 지연 보정)
